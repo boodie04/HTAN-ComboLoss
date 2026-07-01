@@ -69,12 +69,19 @@ def get_config(model_name, dataset_name):
     cfg["IMG_SIZE"]       = DATASET_IMG_SIZE.get(dataset_name, 256)
     cfg["MODEL"]          = model_name
     cfg["DATASET"]        = dataset_name
-    cfg["CHECKPOINT_DIR"] = os.path.join(
-        cfg["SAVES_ROOT"],
-        f"{model_name}_{dataset_name}" if dataset_name != "isic" else model_name
-    )
-    os.makedirs(cfg["CHECKPOINT_DIR"], exist_ok=True)
     return cfg
+
+
+def set_experiment_paths(config):
+    model_name = config["MODEL"]
+    dataset_name = config["DATASET"]
+    loss_name = config.get("LOSS", "paper").lower()
+    exp_name = f"{model_name}_{loss_name}"
+    if dataset_name != "isic":
+        exp_name = f"{model_name}_{dataset_name}_{loss_name}"
+
+    config["CHECKPOINT_DIR"] = os.path.join(config["SAVES_ROOT"], exp_name)
+    os.makedirs(config["CHECKPOINT_DIR"], exist_ok=True)
 
 
 def get_loaders(dataset_name, config):
@@ -165,9 +172,42 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model",   required=True)
     parser.add_argument("--dataset", required=True)
+    parser.add_argument(
+        "--loss",
+        choices=["paper", "combo"],
+        default=None,
+        help="paper keeps the original 0.5 BCE + 0.5 Dice loss; combo uses weighted CE plus overlap regularization.",
+    )
+    parser.add_argument(
+        "--combo-alpha",
+        type=float,
+        default=None,
+        help="Combo Loss BCE weight. Higher values make cross entropy dominate.",
+    )
+    parser.add_argument(
+        "--combo-beta",
+        type=float,
+        default=None,
+        help="Combo Loss positive-class weight. Values above 0.5 penalize false negatives more.",
+    )
+    parser.add_argument(
+        "--combo-overlap",
+        choices=["dice", "jaccard"],
+        default=None,
+        help="Overlap regularizer used by Combo Loss.",
+    )
     args = parser.parse_args()
 
     config = get_config(args.model, args.dataset)
+    if args.loss is not None:
+        config["LOSS"] = args.loss
+    if args.combo_alpha is not None:
+        config["COMBO_ALPHA"] = args.combo_alpha
+    if args.combo_beta is not None:
+        config["COMBO_BETA"] = args.combo_beta
+    if args.combo_overlap is not None:
+        config["COMBO_OVERLAP"] = args.combo_overlap
+    set_experiment_paths(config)
 
     from configs.base_config import set_seed
     set_seed(config["SEED"])
@@ -178,6 +218,13 @@ def main():
     print(f"Device:     {config['DEVICE']}")
     print(f"Epochs:     {config['EPOCHS']}")
     print(f"Optimizer:  {config.get('OPTIMIZER', 'sgd').upper()}")
+    print(f"Loss:       {config.get('LOSS', 'paper')}")
+    if config.get("LOSS", "paper") == "combo":
+        print(
+            f"Combo:      alpha={config.get('COMBO_ALPHA')} | "
+            f"beta={config.get('COMBO_BETA')} | "
+            f"overlap={config.get('COMBO_OVERLAP')}"
+        )
     print(f"Checkpoint: {config['CHECKPOINT_DIR']}\n")
 
     train_loader, val_loader = get_loaders(args.dataset, config)
@@ -189,12 +236,12 @@ def main():
     optimizer = get_optimizer(model, config)
     scheduler = get_scheduler(optimizer, config)
 
-    from utils.losses import PaperLoss
+    from utils.losses import build_loss
     from utils.trainer import train_model
 
     train_model(
         model, train_loader, val_loader,
-        optimizer, PaperLoss(), config, scheduler
+        optimizer, build_loss(config), config, scheduler
     )
 
 

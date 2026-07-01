@@ -60,7 +60,10 @@ def get_model(name, img_size=256):
 
 
 def get_config(model_name, dataset_name):
-    if model_name in ("transattunet", "unet", "doubleunet"):
+    if model_name in ("transattunet", "unet", "doubleunet") and dataset_name != "isic":
+        from configs.transattunet_config_glas import CONFIG
+        cfg = dict(CONFIG)
+    elif model_name in ("transattunet", "unet", "doubleunet"):
         from configs.transattunet_config import CONFIG
         cfg = dict(CONFIG)
     else:
@@ -70,30 +73,39 @@ def get_config(model_name, dataset_name):
     cfg["IMG_SIZE"]       = DATASET_IMG_SIZE.get(dataset_name, 256)
     cfg["MODEL"]          = model_name
     cfg["DATASET"]        = dataset_name
-    cfg["CHECKPOINT_DIR"] = os.path.join(
-        cfg["SAVES_ROOT"],
-        f"{model_name}_{dataset_name}" if dataset_name != "isic" else model_name
-    )
     return cfg
+
+
+def set_experiment_paths(config):
+    model_name = config["MODEL"]
+    dataset_name = config["DATASET"]
+    loss_name = config.get("LOSS", "paper").lower()
+    exp_name = f"{model_name}_{loss_name}"
+    if dataset_name != "isic":
+        exp_name = f"{model_name}_{dataset_name}_{loss_name}"
+
+    config["CHECKPOINT_DIR"] = os.path.join(config["SAVES_ROOT"], exp_name)
 
 
 def get_val_loader(dataset_name, config):
     if dataset_name == "isic":
         from datasets.isic_dataset import get_loaders
-        _, val_loader, _ = get_loaders(
+        loaders = get_loaders(
             img_size=config["IMG_SIZE"],
             batch_size=config["BATCH_SIZE"],
             seed=config["SEED"],
             num_workers=config["NUM_WORKERS"],
         )
+        val_loader = loaders[1]
         return val_loader
     elif dataset_name == "glas":
         from datasets.glas_dataset import get_loaders
-        _, val_loader, _ = get_loaders(
+        loaders = get_loaders(
             img_size=config["IMG_SIZE"],
             batch_size=config["BATCH_SIZE"],
             num_workers=config["NUM_WORKERS"],
         )
+        val_loader = loaders[1]
         return val_loader
     elif dataset_name == "covid":
         from datasets.covid_dataset import get_loaders
@@ -133,8 +145,10 @@ def predict_with_tta(model, imgs):
     return (pred_orig + pred_h + pred_v) / 3.0
 
 
-def evaluate_model(model_name, dataset_name):
+def evaluate_model(model_name, dataset_name, loss_name):
     config    = get_config(model_name, dataset_name)
+    config["LOSS"] = loss_name
+    set_experiment_paths(config)
     device    = config["DEVICE"]
     img_size  = config["IMG_SIZE"]
     best_ckpt = os.path.join(config["CHECKPOINT_DIR"], "best_model.pth")
@@ -186,14 +200,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model",   required=True, help="Model name or 'all'")
     parser.add_argument("--dataset", required=True, help="Dataset name")
+    parser.add_argument(
+        "--loss",
+        choices=["paper", "combo"],
+        default="paper",
+        help="Checkpoint loss namespace to evaluate.",
+    )
     args = parser.parse_args()
 
     models_to_eval = ALL_MODELS if args.model == "all" else [args.model]
 
     results = {}
     for m in models_to_eval:
-        print(f"Evaluating {m}...")
-        results[m] = evaluate_model(m, args.dataset)
+        print(f"Evaluating {m} ({args.loss})...")
+        results[m] = evaluate_model(m, args.dataset, args.loss)
 
     print_table(results)
 
@@ -204,11 +224,12 @@ def main():
 
     for model_name, metrics in results.items():
         if metrics:
-            out_path = os.path.join(results_dir, f"{model_name}.json")
+            out_path = os.path.join(results_dir, f"{model_name}_{args.loss}.json")
             with open(out_path, "w") as f:
                 json.dump({
                     "model":   model_name,
                     "dataset": args.dataset,
+                    "loss":    args.loss,
                     **metrics
                 }, f, indent=4)
 

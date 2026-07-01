@@ -30,6 +30,9 @@ def train_one_epoch(loader, model, optimizer, loss_fn, config, epoch):
         preds = model(imgs, epoch=epoch)
         loss  = loss_fn(preds, masks)
         loss.backward()
+        clip_grad = config.get("CLIP_GRAD")
+        if clip_grad:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
         optimizer.step()
         total_loss += loss.item()
 

@@ -4,6 +4,8 @@
 
 Maintained on GitHub by [boodie04](https://github.com/boodie04).
 
+This version adds a Taghanaki et al.-inspired Combo Loss experiment path for small-foreground medical segmentation.
+
 HTAN integrates Manifold-Constrained Hyper-Connections (mHC) into the TransAttUNet bottleneck, achieving consistent improvements across three medical imaging benchmarks.
 
 ---
@@ -14,7 +16,7 @@ HTAN integrates Manifold-Constrained Hyper-Connections (mHC) into the TransAttUN
 
 **1. Clone and install**
 ```bash
-git clone https://github.com/boodie04/HTAN.git
+git clone https://github.com/boodie04/HTAN-ComboLoss.git
 cd HTAN
 pip install torch torchvision scipy opencv-python langchain-core langgraph pydantic huggingface_hub
 ```
@@ -66,6 +68,9 @@ tools = [...your_existing_tools..., htan_segmentation_tool]
 All HTAN variants trained with AdamW + cosine LR schedule, seed 123.
 Baselines on ISIC use SGD (faithful to original TransAttUNet paper protocol).
 GlaS and Bowl use AdamW for all models.
+
+The tables below are the original reproduced results. The Combo Loss changes in this repo
+need to be re-run on EC2 before reporting new numbers.
 
 ### ISIC-2018 — Skin Lesion Segmentation
 2594 dermoscopy images · 2074 train / 520 val · 256×256 · 100 epochs
@@ -137,6 +142,54 @@ GlaS and Bowl use AdamW for all models.
 | `htan_2_n4` | 129M | 2 mHC blocks, n=4 streams. Over-parameterized. |
 | `htan_1_hres_only` | 67M | Ablation — constrains H_res stream only. Weaker than full mHC. |
 | `transattunet` | 41.3M | Baseline. Use for comparison only. |
+
+---
+
+## Paper-Inspired Loss Improvement
+
+This repo adds a Combo Loss experiment path based on the loss-function discussion in
+Taghanaki et al., *Deep Semantic Segmentation of Natural and Medical Images: A Review*,
+Section 4.
+
+The motivation is small-foreground stability. In Figures 12 and 13, the review shows that
+Dice/Jaccard-style overlap losses can fluctuate heavily on small objects and can judge the
+same pixel mistake very differently depending on foreground size. Cross entropy is smoother
+for optimization, but does not directly encourage mask overlap or shape quality. Combo Loss
+uses weighted cross entropy as the main signal and keeps Dice/Jaccard as an overlap
+regularizer.
+
+Changes in this repo:
+
+- Added `ComboLoss` in `utils/losses.py`.
+- Added `build_loss(config)` so experiments can switch losses cleanly.
+- HTAN defaults to `LOSS="combo"` with `COMBO_ALPHA=0.7`, `COMBO_BETA=0.7`, and `COMBO_OVERLAP="dice"`.
+- `COMBO_BETA > 0.5` penalizes false negatives more, which is useful for small lesion/gland foregrounds.
+- Added CLI flags: `--loss`, `--combo-alpha`, `--combo-beta`, and `--combo-overlap`.
+- Checkpoints now include the loss name, so `paper` and `combo` runs do not overwrite each other.
+- Enabled the existing `CLIP_GRAD` config during training.
+
+Suggested EC2 comparison:
+
+```bash
+# Original loss baseline
+python3 train.py --model htan_2_n2 --dataset isic --loss paper
+python3 evaluate.py --model htan_2_n2 --dataset isic --loss paper
+
+# Combo Loss, false-negative weighted
+python3 train.py --model htan_2_n2 --dataset isic --loss combo --combo-alpha 0.7 --combo-beta 0.7 --combo-overlap dice
+python3 evaluate.py --model htan_2_n2 --dataset isic --loss combo
+
+# GlaS small-structure run
+python3 train.py --model htan_1_n2 --dataset glas --loss paper
+python3 train.py --model htan_1_n2 --dataset glas --loss combo --combo-alpha 0.7 --combo-beta 0.7 --combo-overlap dice
+python3 evaluate.py --model htan_1_n2 --dataset glas --loss paper
+python3 evaluate.py --model htan_1_n2 --dataset glas --loss combo
+```
+
+Run the same seed and dataset split when comparing. Report Dice, IoU, recall, precision,
+and validation-loss smoothness. The expected benefit is not guaranteed higher Dice on every
+dataset; the hypothesis is improved small-foreground stability and recall from the
+false-negative-weighted cross-entropy term.
 
 ---
 

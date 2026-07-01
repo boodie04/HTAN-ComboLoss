@@ -27,6 +27,14 @@ CONFIG.update({
     "LR_SCHEDULER": "cosine",
     "LR_MIN":       1e-6,
 
+    # Taghanaki et al.-inspired Combo Loss.
+    # beta > 0.5 increases the penalty for false negatives on small foregrounds.
+    "LOSS":          "combo",
+    "COMBO_ALPHA":   0.7,
+    "COMBO_BETA":    0.7,
+    "COMBO_OVERLAP": "dice",
+    "COMBO_SMOOTH":  1.0,
+
     # mHC specific
     "EXPANSION_N":  4,         # default, overridden per experiment
     "MHC_BLOCKS":   1,         # 1 = HTAN_1, 2 = HTAN_2
