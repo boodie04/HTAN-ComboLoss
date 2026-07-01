@@ -2,6 +2,8 @@
 
 **Hyper TransAttUNet: Manifold-Constrained Hyper-Connections for Medical Image Segmentation**
 
+Maintained on GitHub by [boodie04](https://github.com/boodie04).
+
 HTAN integrates Manifold-Constrained Hyper-Connections (mHC) into the TransAttUNet bottleneck, achieving consistent improvements across three medical imaging benchmarks.
 
 ---
@@ -12,7 +14,7 @@ HTAN integrates Manifold-Constrained Hyper-Connections (mHC) into the TransAttUN
 
 **1. Clone and install**
 ```bash
-git clone https://github.com/MohamedKhalidmk/HTAN.git
+git clone https://github.com/boodie04/HTAN.git
 cd HTAN
 pip install torch torchvision scipy opencv-python langchain-core langgraph pydantic huggingface_hub
 ```
