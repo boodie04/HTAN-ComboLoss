@@ -69,8 +69,9 @@ All HTAN variants trained with AdamW + cosine LR schedule, seed 123.
 Baselines on ISIC use SGD (faithful to original TransAttUNet paper protocol).
 GlaS and Bowl use AdamW for all models.
 
-The tables below are the original reproduced results. The Combo Loss changes in this repo
-need to be re-run on EC2 before reporting new numbers.
+The original reproduced results are listed below. A new EC2 comparison between the original
+loss and Combo Loss on ISIC-2018 is summarized in the next section and documented in
+[`EXPERIMENT_RESULTS.md`](EXPERIMENT_RESULTS.md).
 
 ### ISIC-2018 — Skin Lesion Segmentation
 2594 dermoscopy images · 2074 train / 520 val · 256×256 · 100 epochs
@@ -190,6 +191,21 @@ Run the same seed and dataset split when comparing. Report Dice, IoU, recall, pr
 and validation-loss smoothness. The expected benefit is not guaranteed higher Dice on every
 dataset; the hypothesis is improved small-foreground stability and recall from the
 false-negative-weighted cross-entropy term.
+
+### EC2 ISIC-2018 Result
+
+The first controlled EC2 comparison used `htan_2_n2` on ISIC-2018 with the same seed and
+validation split.
+
+| Loss | Dice | IoU | ACC | REC | PRE |
+|---|---:|---:|---:|---:|---:|
+| Original BCE + Dice | **90.66** | **83.46** | **96.18** | 89.61 | **92.78** |
+| Combo Loss alpha=0.7 beta=0.7 | 90.37 | 82.95 | 96.00 | **89.93** | 91.77 |
+
+Conclusion: Combo Loss increased recall, which supports the false-negative weighting
+hypothesis, but the original BCE + Dice loss remains better overall for Dice, IoU,
+accuracy, and precision on this ISIC setting. The next recommended test is a less aggressive
+Combo Loss setting, such as `--combo-alpha 0.8 --combo-beta 0.6`.
 
 ---
 
